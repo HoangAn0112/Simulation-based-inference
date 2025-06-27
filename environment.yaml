@@ -1,0 +1,30 @@
+name: bayesflow
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - jupyter
+  - jupyterlab
+  - keras ~= 3.9.0
+  - numpy ~= 1.26
+  - matplotlib
+  - pre-commit
+  - pytest
+  - pytest-cov
+  - pytest-rerunfailures
+  - pytest-xdist
+  - python >= 3.10, < 3.12
+  - ruff
+  - seaborn
+  - pandas
+  - scikit-learn
+  - scipy
+  - tqdm
+  - tox
+  - termcolor
+  - wrapt
+  - protobuf
+  - pip:
+    - torch==2.5.1  
+    - pip install bayesflow==2.*
+    - flatbuffers

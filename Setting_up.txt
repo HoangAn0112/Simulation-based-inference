@@ -1,0 +1,55 @@
+conda create -n sbi python=3.10
+conda activate sbi
+pip install future altair<5
+Download Julia from: https://julialang.org/downloads/
+
+Option: Manually add Julia to PATH
+    Press Windows key, search for Environment Variables, and open:
+
+    "Edit the system environment variables"
+
+    In the dialog that appears:
+
+    Click the "Environment Variables…" button.
+
+    Under System variables, find and select Path, then click Edit.
+
+    Click New, then paste the path to Julia’s bin folder. For example: "C:\Users\YourName\AppData\Local\Programs\Julia-1.X.X\bin"
+
+    Click OK to close all dialogs.
+
+
+IN JULIA 1.4:
+    using Pkg
+    Pkg.add("PackageCompiler")
+    Pkg.add("DifferentialEquations")
+    Pkg.add("DiffEqFlux")
+    Pkg.add("PyCall")
+    ENV["PYTHON"] = "C:\\Path\\To\\Your\\Anaconda\\envs\\sbi\\python.exe"
+    Pkg.build("PyCall")
+
+    using PackageCompiler
+
+    create_sysimage(
+        [:DifferentialEquations, :DiffEqFlux],
+        sysimage_path = joinpath(homedir(), ".julia_sysimage_diffeqtorch.so")
+    )
+
+
+    Back in PowerShell, set the environment variable:
+    $env:JULIA_SYSIMAGE_DIFFEQTORCH = "$env:USERPROFILE\.julia_sysimage_diffeqtorch.so"
+
+IN ANACONDA PROMPT:
+    conda activate sbi
+    pip install julia
+    using Pkg
+    Pkg.add("PyCall")
+    ENV["PYTHON"] = raw"C:\\Users\\tnhoang\\AppData\\Local\\anaconda3\\envs\\sbi\\python.exe"
+    Pkg.build("PyCall")
+
+IN PYTHON
+    import julia
+    import os
+
+    os.environ["PATH"] = r"C:/Users/tnhoang/.julia/juliaup/julia-1.4.2+0.x64.w64.mingw32/bin" + ";" + os.environ["PATH"]
+    julia.install()
