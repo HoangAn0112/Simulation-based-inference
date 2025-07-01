@@ -3,10 +3,8 @@ import numpy as np
 from pathlib import Path
 import seaborn as sns
 
-import scipy
 from scipy.integrate import odeint
 
-import keras
 
 import bayesflow as bf
 
@@ -50,26 +48,28 @@ variable_no_data  = {"ACCOA":None,"ACP":None,"ACE_cell":None}
 data_t = data_t_1mM
 new_ode_parameters = ode_parameters_dict.copy()
 
-def prior_millard():
-     new_ode_parameters = ode_parameters_dict.copy()
-     for p, (low, high) in ode_parameter_log_ranges_dict.items():
-#          new_ode_parameters[p]= 10 ** np.random.uniform(np.log10(low), np.log10(high)
-            new_ode_parameters[p]= 10 ** np.random.uniform(low, high)
-     return dict(new_ode_parameters = new_ode_parameters)
 
-def solver_millard(new_ode_parameters, N=None):
+def prior():
+    sampled_parameters = {}
+    for p, (low, high) in ode_parameter_log_ranges_dict.items():
+        sampled_parameters[p] = 10 ** np.random.uniform(low, high)
+    return dict(sampled_parameters = sampled_parameters)
+
+def solver(sampled_parameters):
     """    
     Args:
-        new_ode_parameters: Either a single parameter dict (when N=None) 
+        sampled_parameters: Either a single parameter dict (when N=None) 
                            or a list/array of parameter dicts (when N is specified)
         N: Optional batch size (inferred automatically if None)
     """
     # Handle both single and batch cases
-    if N is None:
-        param_list = [new_ode_parameters] if isinstance(new_ode_parameters, dict) else new_ode_parameters
-        N = len(param_list)
+    if isinstance(sampled_parameters, dict):
+        param_list = [sampled_parameters]
     else:
-        param_list = new_ode_parameters
+        param_list = sampled_parameters
+
+    N = len(param_list)
+
     
     # Initialize storage
     results = dict(
@@ -77,13 +77,15 @@ def solver_millard(new_ode_parameters, N=None):
         GLC = np.array([]),
         ACE_env=np.array([]),
         X=np.array([]),
-        ACCOA=np.array([]),
-        ACP=np.array([]),
-        ACE_cell=np.array([])
+        # ACCOA=np.array([]),
+        # ACP=np.array([]),
+        # ACE_cell=np.array([])
     )
     
     for i in range(N):
-        new_ode_parameter =  {k: v[i] for k, v in param_list[0].items()}
+        new_ode_parameter = ode_parameters_dict.copy()
+        new_sample_parameter =  {k: v[i] for k, v in param_list[0].items()}
+        new_ode_parameter.update(new_sample_parameter)
         try:
             res = solve_ivp(fun=deriv_Millard,
                             t_span=(0, 4.25),
@@ -92,29 +94,48 @@ def solver_millard(new_ode_parameters, N=None):
                             args=(new_ode_parameter,),
                             t_eval=data_t)
             
-            GLC, ACE_env, X, ACCOA, ACP, ACE_cell = res.y
+            GLC, ACE_env, X, _, _, _ = res.y
 
             results['GLC'] = np.append(results['GLC'], GLC)
             results['ACE_env'] = np.append(results['ACE_env'], ACE_env)
             results['X'] = np.append(results['X'], X)
-            results['ACCOA'] = np.append(results['ACCOA'], ACCOA)
-            results['ACP'] = np.append(results['ACP'], ACP)
-            results['ACE_cell'] = np.append(results['ACE_cell'], ACE_cell)
+            # results['ACCOA'] = np.append(results['ACCOA'], ACCOA)
+            # results['ACP'] = np.append(results['ACP'], ACP)
+            # results['ACE_cell'] = np.append(results['ACE_cell'], ACE_cell)
         except:
             results['GLC'] = np.append(results['GLC'], np.nan)
             results['ACE_env'] = np.append(results['ACE_env'], np.nan)
             results['X'] = np.append(results['X'], np.nan)
-            results['ACCOA'] = np.append(results['ACCOA'], np.nan)
-            results['ACP'] = np.append(results['ACP'], np.nan)
-            results['ACE_cell'] = np.append(results['ACE_cell'], np.nan)
+            # results['ACCOA'] = np.append(results['ACCOA'], np.nan)
+            # results['ACP'] = np.append(results['ACP'], np.nan)
+            # results['ACE_cell'] = np.append(results['ACE_cell'], np.nan)
 
     
     return results
 
-simulator = bf.simulators.make_simulator([prior_millard, solver_millard])
-res = simulator.sample(2000)
-print("ODE parameter list:")
-for key, value in res['new_ode_parameters'].items():
-    print(f"{key} : {value.shape}")
-print(f"GLC shape {res['GLC'].shape}")
+simulator = bf.simulators.make_simulator([prior, solver])
+simulation_sample = simulator.sample(100)
+# print("ODE parameter list:")
+# for key, value in res['sampled_parameters'].items():
+#     print(f"{key} : {value.shape}")
+# print(f"GLC shape {res['GLC'].shape}")
+# print(res)
 
+
+
+adapter = (
+    bf.Adapter()
+#    .broadcast("N", to="GLC")
+#    .as_set(["x", "y"])
+#    .constrain("sigma", lower=0)
+#    .sqrt("N")
+    .convert_dtype("float64", "float32")
+    .concatenate(["sampled_parameters"], into="inference_variables")
+    .concatenate(["GLC", "ACE_env","X"], into="summary_variables")
+#    .rename("N", "inference_conditions")
+)
+
+processed_draws = adapter(simulation_sample)
+print(processed_draws["summary_variables"].shape)
+#print(processed_draws["inference_conditions"].shape)
+print(processed_draws["inference_variables"].shape)
