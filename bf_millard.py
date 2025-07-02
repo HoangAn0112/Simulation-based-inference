@@ -18,6 +18,8 @@ from scipy.integrate import solve_ivp
 from millard_ode.deriv_equations_Millard import deriv_Millard
 from millard_ode.Millard_dicts import ode_parameters_dict,ode_parameter_ranges_dict, ode_parameter_log_ranges_dict
 
+# TO DOs: input model in log scale 
+
 if "KERAS_BACKEND" not in os.environ:
     # set this to "torch", "tensorflow", or "jax"
     os.environ["KERAS_BACKEND"] = "torch"
@@ -47,7 +49,7 @@ variable_data = {"GLC": data_1mM[1:, 3], "ACE_env": data_1mM[1:, 1], "X":data_1m
 variable_no_data  = {"ACCOA":None,"ACP":None,"ACE_cell":None}
 data_t = data_t_1mM
 new_ode_parameters = ode_parameters_dict.copy()
-
+parameters_name = ode_parameter_log_ranges_dict.keys()
 
 def prior():
     sampled_parameters = {}
@@ -114,14 +116,12 @@ def solver(sampled_parameters):
     return results
 
 simulator = bf.simulators.make_simulator([prior, solver])
-simulation_sample = simulator.sample(100)
+simulation_sample = simulator.sample(200)
+simulation_sample = {**simulation_sample['sampled_parameters'], **simulation_sample}
+del simulation_sample ['sampled_parameters']
 # print("ODE parameter list:")
-# for key, value in res['sampled_parameters'].items():
+# for key, value in simulation_sample.items():
 #     print(f"{key} : {value.shape}")
-# print(f"GLC shape {res['GLC'].shape}")
-# print(res)
-
-
 
 adapter = (
     bf.Adapter()
@@ -130,12 +130,26 @@ adapter = (
 #    .constrain("sigma", lower=0)
 #    .sqrt("N")
     .convert_dtype("float64", "float32")
-    .concatenate(["sampled_parameters"], into="inference_variables")
+    .concatenate(parameters_name, into="inference_variables")
     .concatenate(["GLC", "ACE_env","X"], into="summary_variables")
 #    .rename("N", "inference_conditions")
 )
 
 processed_draws = adapter(simulation_sample)
+print(processed_draws)
 print(processed_draws["summary_variables"].shape)
-#print(processed_draws["inference_conditions"].shape)
 print(processed_draws["inference_variables"].shape)
+
+summary_network = bf.networks.SetTransformer(summary_dim=32)
+inference_network = bf.networks.CouplingFlow()
+
+workflow = bf.BasicWorkflow(
+    simulator=simulator,
+    adapter=adapter,
+    inference_network=inference_network,
+    summary_network=summary_network,
+    standardize=["inference_variables", "summary_variables"]
+)
+
+history = workflow.fit_online(epochs=50, batch_size=64, num_batches_per_epoch=200)
+f = bf.diagnostics.plots.loss(history)
