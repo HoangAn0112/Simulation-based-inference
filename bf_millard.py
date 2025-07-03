@@ -2,7 +2,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from pathlib import Path
 import seaborn as sns
-
+import multiprocessing
 from scipy.integrate import odeint
 
 
@@ -55,74 +55,73 @@ def prior():
     sampled_parameters = {}
     for p, (low, high) in ode_parameter_log_ranges_dict.items():
         sampled_parameters[p] = 10 ** np.random.uniform(low, high)
-    return dict(sampled_parameters = sampled_parameters)
+    return sampled_parameters
 
-def solver(sampled_parameters):
+def solver(**kwargs):
     """    
     Args:
-        sampled_parameters: Either a single parameter dict (when N=None) 
+        kwargs: Either a single parameter dict (when N=None) 
                            or a list/array of parameter dicts (when N is specified)
         N: Optional batch size (inferred automatically if None)
     """
     # Handle both single and batch cases
-    if isinstance(sampled_parameters, dict):
-        param_list = [sampled_parameters]
-    else:
-        param_list = sampled_parameters
+    # if isinstance(kwargs, dict):
+    #     param_list = [kwargs]
+    # else:
+    # param_list = kwargs
 
-    N = len(param_list)
-
+    # print(kwargs)
     
-    # Initialize storage
+#     # Initialize storage
     results = dict(
-#        t =  data_t,
+# #        t =  data_t,
         GLC = np.array([]),
         ACE_env=np.array([]),
         X=np.array([]),
-        # ACCOA=np.array([]),
-        # ACP=np.array([]),
-        # ACE_cell=np.array([])
+#         # ACCOA=np.array([]),
+#         # ACP=np.array([]),
+#         # ACE_cell=np.array([])
     )
     
-    for i in range(N):
-        new_ode_parameter = ode_parameters_dict.copy()
-        new_sample_parameter =  {k: v[i] for k, v in param_list[0].items()}
-        new_ode_parameter.update(new_sample_parameter)
-        try:
-            res = solve_ivp(fun=deriv_Millard,
-                            t_span=(0, 4.25),
-                            y0=np.array(y_1_0),  # Ensure 1D array
-                            method='LSODA',
-                            args=(new_ode_parameter,),
-                            t_eval=data_t)
-            
-            GLC, ACE_env, X, _, _, _ = res.y
+    # for i in range(N):
+    new_ode_parameter = ode_parameters_dict.copy()
+    # new_sample_parameter =  {k: v[i] for k, v in param_list.items()}
+    new_ode_parameter.update(kwargs)
+    try:
+        res = solve_ivp(fun=deriv_Millard,
+                        t_span=(0, 4.25),
+                        y0=np.array(y_1_0),  # Ensure 1D array
+                        method='LSODA',
+                        args=(new_ode_parameter,),
+                        t_eval=data_t)
+        
+        GLC, ACE_env, X, _, _, _ = res.y
 
-            results['GLC'] = np.append(results['GLC'], GLC)
-            results['ACE_env'] = np.append(results['ACE_env'], ACE_env)
-            results['X'] = np.append(results['X'], X)
-            # results['ACCOA'] = np.append(results['ACCOA'], ACCOA)
-            # results['ACP'] = np.append(results['ACP'], ACP)
-            # results['ACE_cell'] = np.append(results['ACE_cell'], ACE_cell)
-        except:
-            results['GLC'] = np.append(results['GLC'], np.nan)
-            results['ACE_env'] = np.append(results['ACE_env'], np.nan)
-            results['X'] = np.append(results['X'], np.nan)
-            # results['ACCOA'] = np.append(results['ACCOA'], np.nan)
-            # results['ACP'] = np.append(results['ACP'], np.nan)
-            # results['ACE_cell'] = np.append(results['ACE_cell'], np.nan)
+        results['GLC'] = np.append(results['GLC'], GLC)
+        results['ACE_env'] = np.append(results['ACE_env'], ACE_env)
+        results['X'] = np.append(results['X'], X)
+        # results['ACCOA'] = np.append(results['ACCOA'], ACCOA)
+        # results['ACP'] = np.append(results['ACP'], ACP)
+        # results['ACE_cell'] = np.append(results['ACE_cell'], ACE_cell)
+    except:
+        results['GLC'] = np.append(results['GLC'], np.nan)
+        results['ACE_env'] = np.append(results['ACE_env'], np.nan)
+        results['X'] = np.append(results['X'], np.nan)
+        # results['ACCOA'] = np.append(results['ACCOA'], np.nan)
+        # results['ACP'] = np.append(results['ACP'], np.nan)
+        # results['ACE_cell'] = np.append(results['ACE_cell'], np.nan)
 
     
     return results
 
 simulator = bf.simulators.make_simulator([prior, solver])
 simulation_sample = simulator.sample(200)
-simulation_sample = {**simulation_sample['sampled_parameters'], **simulation_sample}
-del simulation_sample ['sampled_parameters']
+# simulation_sample = {**simulation_sample['sampled_parameters'], **simulation_sample}
+# del simulation_sample ['sampled_parameters']
 # print("ODE parameter list:")
 # for key, value in simulation_sample.items():
 #     print(f"{key} : {value.shape}")
-
+print("finish sampling")
 adapter = (
     bf.Adapter()
 #    .broadcast("N", to="GLC")
@@ -142,7 +141,7 @@ print(processed_draws["inference_variables"].shape)
 
 summary_network = bf.networks.SetTransformer(summary_dim=32)
 inference_network = bf.networks.CouplingFlow()
-
+print("start workflow")
 workflow = bf.BasicWorkflow(
     simulator=simulator,
     adapter=adapter,
@@ -151,5 +150,5 @@ workflow = bf.BasicWorkflow(
     standardize=["inference_variables", "summary_variables"]
 )
 
-history = workflow.fit_online(epochs=50, batch_size=64, num_batches_per_epoch=200)
+history = workflow.fit(epochs=50, batch_size=64, num_batches_per_epoch=200)
 f = bf.diagnostics.plots.loss(history)
