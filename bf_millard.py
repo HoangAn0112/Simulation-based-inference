@@ -166,29 +166,41 @@ class GRU(bf.networks.SummaryNetwork):
 
 summary_net = GRU()
 
-point_inference_network = bf.networks.PointInferenceNetwork(
-    scores=dict(
-        mean=bf.scores.MeanScore(),
-        quantiles=bf.scores.QuantileScore(data_t),
-    ),
-)
+# point_inference_network = bf.networks.PointInferenceNetwork(
+#     scores=dict(
+#         mean=bf.scores.MeanScore(),
+#         quantiles=bf.scores.QuantileScore(data_t),
+#     ),
+# )
+
+inference_net = bf.networks.CouplingFlow()
 
 # Configure optimizer with gradient clipping
 optimizer = keras.optimizers.Adam(
-    learning_rate=0.001,
+    learning_rate=0.0001,
     global_clipnorm=1.0
+)
+
+# Configure learning rate scheduler for stability
+lr_scheduler = keras.callbacks.ReduceLROnPlateau(
+    monitor='val_loss',
+    factor=0.5,
+    patience=2,
+    min_lr=1e-6,
+    verbose=1
 )
 
 workflow = bf.BasicWorkflow(
     simulator=simulator,
     adapter=adapter,
-    inference_network=point_inference_network,
+    inference_network=inference_net,
     summary_network=summary_net,
     optimizer=optimizer,
-    standardize=None
+    standardize=True,
+    callbacks = lr_scheduler
 )
 
-training_size = 1000
+training_size = 500
 validation_size = 100
 training_data = workflow.simulate(training_size)
 training_data = remove_nan_rows(training_data,training_size)
