@@ -8,7 +8,7 @@ from functools import partial
 import keras
 import bayesflow as bf
 import os
-import pickle
+import torch
 from numpy import genfromtxt
 from millard_ode.tools import ssr_error
 from millard_ode.Millard_dicts import variable_standard_deviations_dict
@@ -68,7 +68,7 @@ def solver(**kwargs):
     )
 
     new_ode_parameter = ode_parameters_dict.copy()
-    new_sample_parameter = {k: 10 ** v for k, v in kwargs.items()}
+    new_sample_parameter = {k: 10**v for k, v in kwargs.items()}
     new_ode_parameter.update(new_sample_parameter)
     
     try:
@@ -143,7 +143,7 @@ simulator = bf.simulators.make_simulator([prior, solver])
 # sampling = simulator.sample(size)
 # sampling = remove_nan_rows(sampling,size)
 
-sizes = [100, 1000, 10000]
+sizes = [100]
 
 for size in sizes:
     # Sample and clean
@@ -153,11 +153,11 @@ for size in sizes:
     # Print shape for confirmation
     print(f"Size {size}:")
     print(keras.tree.map_structure(keras.ops.shape, sampling))
+    # print(sampling.dtype)
     
     # Save each dataset to its own file
-    filename = f"data/sampled_dataset_{size}.pkl"
-    with open(filename, "wb") as f:
-        pickle.dump(sampling, f)
+    filename = f"data/sampled_dataset_{size}.pth"
+    torch.save(sampling, filename)
 
     print(f"Saved to {filename}")
 
@@ -193,7 +193,6 @@ for size in sizes:
             alpha=0.3, color='blue', label='±1 SD'
         )
         ax.set_title(f'{var_name} over Time', fontsize=10)
-        ax.set_xlabel('Time Step', fontsize=8)
         ax.set_ylabel('Value', fontsize=8)
         ax.legend(fontsize=8)
         ax.grid(True)
@@ -215,6 +214,6 @@ for size in sizes:
         axes_right[j].set_visible(False)
 
     plt.tight_layout()
-
+    # plt.show()
     filename = f"data/sampled_dataset_{size}.png"
     plt.savefig(filename)

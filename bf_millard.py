@@ -8,6 +8,7 @@ from functools import partial
 import keras
 import bayesflow as bf
 import os
+import math
 from numpy import genfromtxt
 from millard_ode.tools import ssr_error
 from millard_ode.Millard_dicts import variable_standard_deviations_dict
@@ -61,7 +62,7 @@ def solver(**kwargs):
                or a list/array of parameter dicts (when N is specified)
         N: Optional batch size (inferred automatically if None)
     """
-    nan_arr = np.full_like(data_t, np.nan)
+    nan_arr = np.full_like(data_t, 0)
     results = dict(
         GLC=np.array([]),
         ACE_env=np.array([]),
@@ -88,7 +89,10 @@ def solver(**kwargs):
                 print(f"{name} length mismatch: expected {len(data_t)}, got {len(arr)}, {arr}")
                 results[name] = np.append(results[name], nan_arr)
             else:
-                results[name] = np.append(results[name], arr)
+                arr_np = np.array(arr)
+                arr_np[arr_np <= 0] = 1 
+                log_values = np.log(arr_np)
+                results[name] = np.append(results[name], log_values)
 
     except Exception as e:
         print(f"solver failed: {e}")
@@ -201,8 +205,8 @@ workflow = bf.BasicWorkflow(
 )
 
 training_size = 500
-validation_size = 100
-training_data = workflow.simulate(training_size)
+validation_size = 10
+training_data = simulator.sample(training_size)
 training_data = remove_nan_rows(training_data,training_size)
 validation_data = workflow.simulate(validation_size)
 validation_data = remove_nan_rows(validation_data,validation_size)
@@ -210,14 +214,17 @@ check_for_nan_inf(training_data)
 check_for_nan_inf(validation_data)
 
 print(f'training - {keras.tree.map_structure(keras.ops.shape, training_data)}')
-print(validation_data)
 
 history = workflow.fit_offline(
     training_data,
-    epochs=50, 
-    batch_size=64, 
+    epochs=100, 
+    batch_size=128, 
     validation_data=validation_data,
 )
 f = bf.diagnostics.plots.loss(history)
 
-plt.show()
+# plt.show()
+
+samples = workflow.sample(conditions = variable_data, num_samples=10 )
+samples = workflow.samples_to_data_frame(samples)
+print(samples)
