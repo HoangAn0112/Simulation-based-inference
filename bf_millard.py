@@ -1,148 +1,35 @@
 import matplotlib.pyplot as plt
 import numpy as np
-from pathlib import Path
-import seaborn as sns
-import pandas as pd
-from scipy.integrate import odeint
-from functools import partial
 import keras
 import bayesflow as bf
 import os
-import math
 from numpy import genfromtxt
-from millard_ode.tools import ssr_error
-from millard_ode.Millard_dicts import variable_standard_deviations_dict
 import matplotlib.pyplot as plt
 
-from scipy.integrate import solve_ivp
-from millard_ode.deriv_equations_Millard import deriv_Millard
-from millard_ode.Millard_dicts import ode_parameters_dict,ode_parameter_ranges_dict, ode_parameter_log_ranges_dict
+from millard_ode.Millard_dicts import *
+from millard_ode.tools import ssr_error
+from tools import *
+from solver import prior, solver_log, solver
 
-# TO DOs: input model in log scale 
+# TO DOs: replug into solver
 
 if "KERAS_BACKEND" not in os.environ:
     # set this to "torch", "tensorflow", or "jax"
     os.environ["KERAS_BACKEND"] = "torch"
 
 ##########
-# Initial conditions used by Millard
-GLC_1_0 = 12.89999655
-ACE_env_1_0 = 0.9200020244
-X_1_0 = 0.06999993881
-ACCOA_1_0 = 0.27305
-ACP_1_0 = 0.063
-ACE_cell_1_0 = 1.035
-
-# Initial conditions vector
-y_1_0 = [GLC_1_0, ACE_env_1_0, X_1_0, ACCOA_1_0, ACP_1_0, ACE_cell_1_0] 
-
 DATA_FILE = "./data/"
 
-# Load experimental data
+print("import data")
 data_1mM = genfromtxt(os.path.join(DATA_FILE,'data_1mM.csv'), delimiter=',')
-data_t_1mM = data_1mM[1:, 0]  
-
-observables = ["GLC","ACE_env","X"]
+data_t= data_1mM[1:, 0]  
 variable_data = {"GLC": data_1mM[1:, 3], "ACE_env": data_1mM[1:, 1], "X":data_1mM[1:, 2]}
 variable_no_data  = {"ACCOA":None,"ACP":None,"ACE_cell":None}
-data_t = data_t_1mM
 new_ode_parameters = ode_parameters_dict.copy()
 parameters_name = ode_parameter_log_ranges_dict.keys()
 
-def prior():
-    sampled_parameters = {}
-    for p, (low, high) in ode_parameter_log_ranges_dict.items():
-        sampled_parameters[p] = np.random.uniform(low, high)
-    return sampled_parameters
 
-def solver(**kwargs):
-    """    
-    Args:
-        kwargs: Either a single parameter dict (when N=None) 
-               or a list/array of parameter dicts (when N is specified)
-        N: Optional batch size (inferred automatically if None)
-    """
-    nan_arr = np.full_like(data_t, 0)
-    results = dict(
-        GLC=np.array([]),
-        ACE_env=np.array([]),
-        X=np.array([]),
-    )
-
-    new_ode_parameter = ode_parameters_dict.copy()
-    new_sample_parameter = {k: 10 ** v for k, v in kwargs.items()}
-    new_ode_parameter.update(new_sample_parameter)
-    
-    try:
-        res = solve_ivp(
-            fun=deriv_Millard,
-            t_span=(0, 4.25),
-            y0=np.array(y_1_0),  
-            method='BDF',
-            args=(new_ode_parameter,),
-            t_eval=data_t
-        )
-        
-        GLC, ACE_env, X, _, _, _ = res.y
-        for arr, name in zip([GLC, ACE_env, X], ['GLC', 'ACE_env', 'X']):
-            if len(arr) != len(data_t):
-                print(f"{name} length mismatch: expected {len(data_t)}, got {len(arr)}, {arr}")
-                results[name] = np.append(results[name], nan_arr)
-            else:
-                arr_np = np.array(arr)
-                arr_np[arr_np <= 0] = 1 
-                log_values = np.log(arr_np)
-                results[name] = np.append(results[name], log_values)
-
-    except Exception as e:
-        print(f"solver failed: {e}")
-        results['GLC'] = np.append(results['GLC'], nan_arr)
-        results['ACE_env'] = np.append(results['ACE_env'], nan_arr)
-        results['X'] = np.append(results['X'], nan_arr)
-    
-    return results
-
-def remove_nan_rows(data_dict, length = None):
-    """
-    Removes all values at positions (indices) where any key in the dictionary
-    has a NaN value. Assumes all values in the dictionary are lists of equal length.
-    
-    Args:
-        data_dict (dict): Dictionary with list values.
-        
-    Returns:
-        dict: A new dictionary with NaN-containing rows removed across all keys.
-    """
-    # Convert everything to np.array for consistency
-    data_dict = {k: np.atleast_2d(np.array(v)) for k, v in data_dict.items()}
-
-    # Infer length (rows)
-    if length is None:
-        length = next(iter(data_dict.values())).shape[0]
-
-    # Build a mask of valid (non-NaN) rows
-    valid_mask = np.ones(length, dtype=bool)
-    for key, array in data_dict.items():
-        if array.shape[0] != length:
-            raise ValueError(f"Key '{key}' has inconsistent length: {array.shape[0]} != {length}")
-        valid_mask &= ~np.isnan(array).any(axis=1)
-
-    # Apply mask and ensure 2D shape
-    cleaned_dict = {key: array[valid_mask] for key, array in data_dict.items()}
-
-    return cleaned_dict
-
-def check_for_nan_inf(data):
-    flat_data = keras.tree.flatten(data)
-    for i, tensor in enumerate(flat_data):
-        arr = keras.ops.convert_to_numpy(tensor)
-        if np.isnan(arr).any():
-            print(f"Tensor {i} has NaNs.")
-        if np.isinf(arr).any():
-            print(f"Tensor {i} has Infs.")
-    print("No INF")
-
-simulator = bf.simulators.make_simulator([prior, solver])
+simulator = bf.simulators.make_simulator([prior, solver_log])
 # simulator.sample(100)
 adapter = (
     bf.adapters.Adapter()
@@ -169,19 +56,18 @@ class GRU(bf.networks.SummaryNetwork):
     
 
 summary_net = GRU()
-
-# point_inference_network = bf.networks.PointInferenceNetwork(
-#     scores=dict(
-#         mean=bf.scores.MeanScore(),
-#         quantiles=bf.scores.QuantileScore(data_t),
-#     ),
-# )
-
 inference_net = bf.networks.CouplingFlow()
+
+point_inference_network = bf.networks.PointInferenceNetwork(
+    scores=dict(
+        mean=bf.scores.MeanScore(),
+        # quantiles=bf.scores.QuantileScore(data_t),
+    ),
+)
 
 # Configure optimizer with gradient clipping
 optimizer = keras.optimizers.Adam(
-    learning_rate=0.0001,
+    learning_rate=0.001,
     global_clipnorm=1.0
 )
 
@@ -204,27 +90,88 @@ workflow = bf.BasicWorkflow(
     callbacks = lr_scheduler
 )
 
-training_size = 500
-validation_size = 10
-training_data = simulator.sample(training_size)
-training_data = remove_nan_rows(training_data,training_size)
-validation_data = workflow.simulate(validation_size)
-validation_data = remove_nan_rows(validation_data,validation_size)
-check_for_nan_inf(training_data)
-check_for_nan_inf(validation_data)
+
+size = 1000
+number_of_results = 10
+sample_file_name = f"data/sampled_dataset_{size}.pth"
+try:
+    print("load pre data")
+    training_data = load_sampled_data(sample_file_name)
+    validation_data = load_sampled_data("data/sampled_dataset_valid_100.pth")
+    
+    print(f"Loaded {size} training samples")
+    print(f"Loaded validation samples")
+
+except Exception as e:
+    print(f"Error loading data: {e}")
 
 print(f'training - {keras.tree.map_structure(keras.ops.shape, training_data)}')
 
 history = workflow.fit_offline(
     training_data,
     epochs=100, 
-    batch_size=128, 
+    batch_size=64, 
     validation_data=validation_data,
 )
 f = bf.diagnostics.plots.loss(history)
 
 # plt.show()
+####################
+# # SAve model
+# from pathlib import Path
+# filepath = Path("model") / f"CoupleFlow_{size}.keras"
+# filepath.parent.mkdir(exist_ok=True)
+# workflow.approximator.save(filepath=filepath)
 
-samples = workflow.sample(conditions = variable_data, num_samples=10 )
-samples = workflow.samples_to_data_frame(samples)
-print(samples)
+###################
+# Inference
+log_variable_data = {k: np.log(v) for k, v in variable_data.items()}
+samples = workflow.sample(conditions = log_variable_data, num_samples=number_of_results )
+# samples = workflow.approximator.estimate(conditions=log_variable_data)
+# print(f' keras {keras.tree.map_structure(keras.ops.shape, samples)}')
+# print(samples)
+# result = {k: v['mean'][0][0] for k,v in samples.items()}
+# # Convert into a nice format 2D data frame
+# # samples_frame = workflow.samples_to_data_frame(samples)
+
+# # print(samples_frame)
+# dict_try = result
+# result_object = solver(**dict_try)
+# print(result_object)
+# plot_results(result_object, data_1mM)
+
+# print(workflow.samples_to_data_frame(samples))
+# for i in range(number_of_results):
+#     result = {k: v[0][i][0] for k,v in samples.items()}
+#     result_object = solver(**result)
+#     print(result)
+    # print(ssr_error(variable_standard_deviations_dict,
+    #       observables=observables,
+    #       variable_data=variable_data,
+    #       variable_res=result_time_serie_dict,
+    #      ))
+    # plot_results(result_object, data_1mM)
+
+millard_parameters = {k: np.log(ode_parameters_dict[k]) for k in parameters_name}
+all_results = []
+for i in range(number_of_results):
+    result = {k: v[0][i][0] for k,v in samples.items()}
+    result_object = solver(**result)
+    all_results.append(result_object)
+    print(result)
+
+    plt.scatter(millard_parameters.values(), result.values())
+    plt.xlabel('millard')
+    plt.ylabel('sbi')
+    plt.title('compare parameters')
+    min_val = min(min(millard_parameters.values()), min(result.values()))
+    max_val = max(max(millard_parameters.values()), max(result.values()))
+    plt.axline((min_val, min_val), (max_val, max_val), color='red', linestyle='--')
+
+    plt.show()
+
+
+plot_results_grid(all_results, data_1mM)
+
+
+

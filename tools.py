@@ -1,0 +1,267 @@
+import keras
+import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+import torch
+
+def remove_nan_rows(data_dict, length = None):
+    """
+    Removes all values at positions (indices) where any key in the dictionary
+    has a NaN value. Assumes all values in the dictionary are lists of equal length.
+    
+    Args:
+        data_dict (dict): Dictionary with list values.
+        
+    Returns:
+        dict: A new dictionary with NaN-containing rows removed across all keys.
+    """
+    # Convert everything to np.array for consistency
+    data_dict = {k: np.atleast_2d(np.array(v)) for k, v in data_dict.items()}
+
+    # Infer length (rows)
+    if length is None:
+        length = next(iter(data_dict.values())).shape[0]
+
+    # Build a mask of valid (non-NaN) rows
+    valid_mask = np.ones(length, dtype=bool)
+    for key, array in data_dict.items():
+        if array.shape[0] != length:
+            raise ValueError(f"Key '{key}' has inconsistent length: {array.shape[0]} != {length}")
+        valid_mask &= ~np.isnan(array).any(axis=1)
+
+    # Apply mask and ensure 2D shape
+    cleaned_dict = {key: array[valid_mask] for key, array in data_dict.items()}
+
+    return cleaned_dict
+
+def check_for_nan_inf(data):
+    flat_data = keras.tree.flatten(data)
+    for i, tensor in enumerate(flat_data):
+        arr = keras.ops.convert_to_numpy(tensor)
+        if np.isnan(arr).any():
+            print(f"Tensor {i} has NaNs.")
+        if np.isinf(arr).any():
+            print(f"Tensor {i} has Infs.")
+    print("No INF")
+
+def plot_sampling_results(sampling, size="", save_path="data/sampled_dataset.png"):
+    """
+    Visualize time-series data and parameter distributions from sampling results.
+    
+    Parameters:
+        sampling (dict): Dictionary containing sampling results with time-series and parameters
+        size (str): Optional identifier for the sample size (used in filename)
+        save_path (str): Path to save the output figure
+        
+    Returns:
+        None (saves plot to file)
+    """
+    # Convert time-series data to numpy arrays
+    time_series = {
+        'GLC': keras.ops.convert_to_numpy(sampling['GLC']),
+        'ACE_env': keras.ops.convert_to_numpy(sampling['ACE_env']),
+        'X': keras.ops.convert_to_numpy(sampling['X'])
+    }
+
+    # Identify scalar parameters (exclude time-series keys)
+    param_keys = [k for k in sampling.keys() if k not in ['GLC', 'ACE_env', 'X']]
+    n_params = len(param_keys)
+
+    # Create figure with two columns
+    fig = plt.figure(figsize=(12, 8))
+    gs = fig.add_gridspec(1, 2, width_ratios=[1, 2], wspace=0.3)
+
+    # --- Time Series Plot ---
+    ts_gs = gs[0].subgridspec(3, 1)
+    ts_axes = [fig.add_subplot(ts_gs[i]) for i in range(3)]
+    time_points = np.arange(len(time_series['GLC']))  # Dynamic time points
+
+    for ax, (var_name, data) in zip(ts_axes, time_series.items()):
+        # Calculate statistics
+        mean = np.mean(data, axis=0).flatten()
+        std = np.std(data, axis=0).flatten()
+        q05, q95 = np.percentile(data, [5, 95], axis=0)
+        
+        # Plotting
+        ax.plot(time_points, mean, 'o-', color='blue', label='Mean')
+        ax.fill_between(time_points, mean - std, mean + std,
+                       alpha=0.3, color='blue', label='±1 SD')
+        ax.fill_between(time_points, q05, q95,
+                       alpha=0.15, color='blue', label='90% CI')
+        
+        # Formatting
+        ax.set_title(f'{var_name} over Time', fontsize=10)
+        ax.set_xlabel('Time Step', fontsize=8)
+        ax.set_ylabel('Value', fontsize=8)
+        ax.legend(fontsize=7)
+        ax.grid(True, alpha=0.3)
+
+    # --- Parameter Distributions ---
+    # Dynamically calculate grid size
+    max_cols = 3  # Maximum columns we want
+    n_cols = min(max_cols, n_params)
+    n_rows = int(np.ceil(n_params / n_cols))
+    
+    param_gs = gs[1].subgridspec(n_rows, n_cols)
+    param_axes = []
+    
+    for i, key in enumerate(param_keys):
+        row = i // n_cols
+        col = i % n_cols
+        ax = fig.add_subplot(param_gs[row, col])
+        data = keras.ops.convert_to_numpy(sampling[key]).flatten()
+        
+        # Enhanced histogram with KDE and rug plot
+        sns.histplot(data, ax=ax, kde=True, bins=15, 
+                    color='green', alpha=0.7,
+                    edgecolor='darkgreen', linewidth=0.5)
+        sns.rugplot(data, ax=ax, color='darkgreen', height=0.05)
+        
+        # Add vertical line at mean
+        mean_val = np.mean(data)
+        ax.axvline(mean_val, color='red', linestyle='--', linewidth=1)
+        
+        # Formatting
+        ax.set_title(f'{key} Distribution', fontsize=9)
+        ax.set_xlabel('Parameter Value', fontsize=7)
+        ax.set_ylabel('Density', fontsize=7)
+        ax.grid(True, alpha=0.2)
+        param_axes.append(ax)
+
+    # Final adjustments
+    plt.suptitle(f'Sampling Results (n={size})', y=1.02, fontsize=12)
+    # plt.tight_layout()
+    
+    # Save figure
+    if size:
+        save_path = save_path.replace('.png', f'_{size}.png')
+    plt.savefig(save_path, bbox_inches='tight', dpi=300)
+    plt.close()
+    print(f"Plot saved to {save_path}")
+
+
+
+from typing import Dict, Any
+
+def load_sampled_data(file_path: str) -> Dict[str, Any]:
+    """Load pre-sampled data from torch.save file"""
+    try:
+        data = torch.load(file_path)
+        # Convert all tensors to numpy arrays
+        return {k: v.numpy() if torch.is_tensor(v) else np.array(v) 
+                for k, v in data.items()}
+    except Exception as e:
+        raise IOError(f"Error loading {file_path}: {str(e)}")
+
+from typing import Dict, Tuple, Optional
+
+def plot_results(sim_data_dict, ode_data):
+    """
+    Plot simulation results vs experimental data.
+
+    Parameters:
+    - sim_data_dict: dict with keys ['GLC', 'ACE_env', 'X', 'ACCOA', 'ACP', 'ACE_cell']
+    - data_file_path: path to folder containing CSV file
+    - data_filename: name of CSV file (default 'data_1mM.csv')
+    """
+
+    # Time points from data (excluding header)
+    data_t = ode_data[1:, 0]
+
+
+# Plot configuration
+    plot_configs = [
+        ('GLC',      0, 0, 3, 'GLC (mM)',      'b'),
+        ('ACE_env',  0, 1, 1, 'ACE_env (mM)',  'g'),
+        ('X',        0, 2, 2, 'X (g_DW/L)',    'r'),
+        # ('ACCOA',    1, 0, None, 'ACCOA',     'm'),
+        # ('ACP',      1, 1, None, 'ACP',       'c'),
+        # ('ACE_cell', 1, 2, None, 'ACE_cell',  'y')
+    ]
+
+    fig, axs = plt.subplots(1, 3, figsize=(15, 3))
+
+    for key, _, col, data_col, ylabel, color in plot_configs:
+        ax = axs[col]
+        sim_values = sim_data_dict.get(key)
+        if sim_values is None or len(sim_values) == 0:
+            print(f"[Warning] No simulation data found for '{key}'. Skipping plot.")
+            continue
+
+        ax.plot(data_t, sim_values, label=f'{key}_gen', color=color)
+
+        # Plot data if available
+        if data_col is not None:
+            ax.plot(data_t, ode_data[1:, data_col], 'o', label=f'{key}_data', color=color)
+
+        ax.set_title(f'{key} 1mM')
+        ax.set_xlabel('t (h)')
+        ax.set_ylabel(ylabel)
+        ax.legend()
+        ax.grid(True)
+
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_results_grid(all_sim_data, ode_data):
+    """
+    Plot multiple simulation results vs experimental data in a grid.
+    Each row shows one simulation result with experimental data for comparison.
+    Columns show different variables.
+    """
+    # Time points from data (excluding header)
+    data_t = ode_data[1:, 0]
+
+    # Variables to plot and their configuration
+    plot_configs = [
+        ('GLC', 3, 'GLC (mM)', 'b'),
+        ('ACE_env', 1, 'ACE_env (mM)', 'g'),
+        ('X', 2, 'X (g_DW/L)', 'r')
+    ]
+    
+    n_simulations = len(all_sim_data)
+    n_variables = len(plot_configs)
+    
+    # Create figure with one row per simulation, columns for each variable
+    fig, axs = plt.subplots(n_simulations, n_variables, 
+                          figsize=(4*n_variables, 3*n_simulations),
+                          squeeze=False)
+    
+    # Plot each simulation in its own row
+    for row_idx, sim_data_dict in enumerate(all_sim_data):
+        for col_idx, (key, data_col, ylabel, color) in enumerate(plot_configs):
+            ax = axs[row_idx, col_idx]
+            
+            sim_values = sim_data_dict.get(key)
+            if sim_values is None or len(sim_values) == 0:
+                print(f"[Warning] No simulation data found for '{key}' in simulation {row_idx}. Skipping plot.")
+                continue
+            
+            # Plot simulation (line)
+            ax.plot(data_t, sim_values, color=color, label=f'{key}_sim')
+            
+            # Plot experimental data (points) - NOW IN ALL ROWS
+            if data_col is not None:
+                ax.plot(data_t, ode_data[1:, data_col], 'o', 
+                       color=color, label=f'{key}_data', markersize=4)
+            
+            # Only show xlabel for bottom row
+            if row_idx == n_simulations - 1:
+                ax.set_xlabel('t (h)')
+            else:
+                ax.set_xticklabels([])
+            
+            # Show title for all rows (modified to include sim number)
+            ax.set_title(f'{key} 1mM (Sim {row_idx+1})')
+            
+            # Show ylabel for all
+            ax.set_ylabel(ylabel)
+            
+            # Show legend for all
+            ax.legend(fontsize='small')
+            
+            ax.grid(True)
+    
+    plt.tight_layout()
+    plt.show()
