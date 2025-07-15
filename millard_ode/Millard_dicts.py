@@ -78,3 +78,17 @@ variable_standard_deviations_dict = {"GLC":0.5,
                                      "ACP":1, # made-up standard deviation only to test on Millard_pinn_toy
                                      "ACE_cell":1 # made-up standard deviation only to test on Millard_pinn_toy
                                      }
+
+# Initial conditions used by Millard
+GLC_1_0 = 12.89999655
+ACE_env_1_0 = 0.9200020244
+X_1_0 = 0.06999993881
+ACCOA_1_0 = 0.27305
+ACP_1_0 = 0.063
+ACE_cell_1_0 = 1.035
+
+# Initial conditions vector
+y_1_0 = [GLC_1_0, ACE_env_1_0, X_1_0, ACCOA_1_0, ACP_1_0, ACE_cell_1_0] 
+
+# Observable variables
+observables = ["GLC", "ACE_env", "X"]

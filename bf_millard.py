@@ -91,7 +91,7 @@ workflow = bf.BasicWorkflow(
 )
 
 
-size = 1000
+size = 10000
 number_of_results = 10
 sample_file_name = f"data/sampled_dataset_{size}.pth"
 try:
