@@ -1,36 +1,40 @@
+import os
+if "KERAS_BACKEND" not in os.environ:
+    os.environ["KERAS_BACKEND"] = "tensorflow" #tensorflow is faster than torch
+
 import matplotlib.pyplot as plt
 import numpy as np
 import keras
 import bayesflow as bf
-import os
 from numpy import genfromtxt
-import matplotlib.pyplot as plt
 
 from millard_ode.Millard_dicts import *
 from millard_ode.tools import ssr_error
 from tools import *
 from solver import prior, solver_log, solver
 
-# TO DOs: replug into solver
-
-if "KERAS_BACKEND" not in os.environ:
-    # set this to "torch", "tensorflow", or "jax"
-    os.environ["KERAS_BACKEND"] = "torch"
+##########
+# TO - Dos: 
+# - calculate ssr_error
+# - test save and reload torch_model
+# - more modular: create a main script
+# - testing handmade statistics + point estimation 
+# - others architechture: compare time and training data_1mM
+# - running for other dataset
+# - active learning for NPE
 
 ##########
 DATA_FILE = "./data/"
 
-print("import data")
 data_1mM = genfromtxt(os.path.join(DATA_FILE,'data_1mM.csv'), delimiter=',')
 data_t= data_1mM[1:, 0]  
 variable_data = {"GLC": data_1mM[1:, 3], "ACE_env": data_1mM[1:, 1], "X":data_1mM[1:, 2]}
 variable_no_data  = {"ACCOA":None,"ACP":None,"ACE_cell":None}
 new_ode_parameters = ode_parameters_dict.copy()
-parameters_name = ode_parameter_log_ranges_dict.keys()
+parameters_name = list(ode_parameter_log_ranges_dict.keys())
 
 
 simulator = bf.simulators.make_simulator([prior, solver_log])
-# simulator.sample(100)
 adapter = (
     bf.adapters.Adapter()
     .convert_dtype("float64", "float32")
@@ -91,8 +95,8 @@ workflow = bf.BasicWorkflow(
 )
 
 
-size = 10000
-number_of_results = 10
+size = 50000
+number_of_results = 5
 sample_file_name = f"data/sampled_dataset_{size}.pth"
 try:
     print("load pre data")
@@ -109,50 +113,29 @@ print(f'training - {keras.tree.map_structure(keras.ops.shape, training_data)}')
 
 history = workflow.fit_offline(
     training_data,
-    epochs=100, 
-    batch_size=64, 
+    epochs=400, 
+    batch_size=32, 
     validation_data=validation_data,
 )
 f = bf.diagnostics.plots.loss(history)
+plt.show()
 
-# plt.show()
 ####################
-# # SAve model
-# from pathlib import Path
-# filepath = Path("model") / f"CoupleFlow_{size}.keras"
-# filepath.parent.mkdir(exist_ok=True)
-# workflow.approximator.save(filepath=filepath)
+# Save model
+from pathlib import Path
+filepath = Path("model") / f"CoupleFlow_{size}.keras"
+filepath.parent.mkdir(exist_ok=True)
+workflow.approximator.save(filepath=filepath)
 
 ###################
+# # reload workflow
+# approximator = keras.saving.load_model(filepath)
 # Inference
 log_variable_data = {k: np.log(v) for k, v in variable_data.items()}
 samples = workflow.sample(conditions = log_variable_data, num_samples=number_of_results )
-# samples = workflow.approximator.estimate(conditions=log_variable_data)
-# print(f' keras {keras.tree.map_structure(keras.ops.shape, samples)}')
-# print(samples)
-# result = {k: v['mean'][0][0] for k,v in samples.items()}
-# # Convert into a nice format 2D data frame
-# # samples_frame = workflow.samples_to_data_frame(samples)
 
-# # print(samples_frame)
-# dict_try = result
-# result_object = solver(**dict_try)
-# print(result_object)
-# plot_results(result_object, data_1mM)
+millard_parameters = {k: np.log10(ode_parameters_dict[k]) for k in parameters_name}
 
-# print(workflow.samples_to_data_frame(samples))
-# for i in range(number_of_results):
-#     result = {k: v[0][i][0] for k,v in samples.items()}
-#     result_object = solver(**result)
-#     print(result)
-    # print(ssr_error(variable_standard_deviations_dict,
-    #       observables=observables,
-    #       variable_data=variable_data,
-    #       variable_res=result_time_serie_dict,
-    #      ))
-    # plot_results(result_object, data_1mM)
-
-millard_parameters = {k: np.log(ode_parameters_dict[k]) for k in parameters_name}
 all_results = []
 for i in range(number_of_results):
     result = {k: v[0][i][0] for k,v in samples.items()}
@@ -167,7 +150,6 @@ for i in range(number_of_results):
     min_val = min(min(millard_parameters.values()), min(result.values()))
     max_val = max(max(millard_parameters.values()), max(result.values()))
     plt.axline((min_val, min_val), (max_val, max_val), color='red', linestyle='--')
-
     plt.show()
 
 

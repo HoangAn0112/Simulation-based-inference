@@ -252,8 +252,8 @@ def plot_results_grid(all_sim_data, ode_data):
             else:
                 ax.set_xticklabels([])
             
-            # Show title for all rows (modified to include sim number)
-            ax.set_title(f'{key} 1mM (Sim {row_idx+1})')
+            # # Show title for all rows (modified to include sim number)
+            # ax.set_title(f'{key} 1mM (Sim {row_idx+1})')
             
             # Show ylabel for all
             ax.set_ylabel(ylabel)
