@@ -22,9 +22,6 @@ def train_model(workflow, size=1000, epochs=100, batch_size=64):
     # Save using Keras 3.0 format
     workflow.approximator.save(model_path, save_format="keras_v3")
     
-    # Optionally save the full workflow state (if needed)
-    # torch.save(workflow.state_dict(), model_path.replace('.keras', '.pth'))
-    
     return history
 
 

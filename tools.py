@@ -44,102 +44,98 @@ def check_for_nan_inf(data):
             print(f"Tensor {i} has Infs.")
     print("No INF")
 
-def plot_sampling_results(sampling, size="", save_path="data/sampled_dataset.png"):
+
+def plot_sampling_results(sampling, size= int, save_path="data/sampled_dataset_"):
     """
     Visualize time-series data and parameter distributions from sampling results.
-    
-    Parameters:
-        sampling (dict): Dictionary containing sampling results with time-series and parameters
-        size (str): Optional identifier for the sample size (used in filename)
-        save_path (str): Path to save the output figure
-        
-    Returns:
-        None (saves plot to file)
+    Fixed version with dimension checks and error handling.
     """
-    # Convert time-series data to numpy arrays
-    time_series = {
-        'GLC': keras.ops.convert_to_numpy(sampling['GLC']),
-        'ACE_env': keras.ops.convert_to_numpy(sampling['ACE_env']),
-        'X': keras.ops.convert_to_numpy(sampling['X'])
-    }
+    save_path = save_path + str(size) + ".png"
+    try:
+        # Convert time-series data to numpy arrays with dimension validation
+        time_series = {}
+        for var in ['GLC', 'ACE_env', 'X']:
+            data = keras.ops.convert_to_numpy(sampling[var])
+            if data.ndim == 3:  # (batch_size, time_steps, 1)
+                data = data.squeeze(-1)  # Remove singleton dimension if exists
+            time_series[var] = data
 
-    # Identify scalar parameters (exclude time-series keys)
-    param_keys = [k for k in sampling.keys() if k not in ['GLC', 'ACE_env', 'X']]
-    n_params = len(param_keys)
+        # Get time dimension from first variable
+        n_time_points = time_series['GLC'].shape[1]
+        time_points = np.arange(n_time_points)  # Simple 0-based time index
 
-    # Create figure with two columns
-    fig = plt.figure(figsize=(12, 8))
-    gs = fig.add_gridspec(1, 2, width_ratios=[1, 2], wspace=0.3)
+        # --- Parameter Extraction ---
+        param_keys = [k for k in sampling.keys() if k not in ['GLC', 'ACE_env', 'X']]
+        n_params = len(param_keys)
 
-    # --- Time Series Plot ---
-    ts_gs = gs[0].subgridspec(3, 1)
-    ts_axes = [fig.add_subplot(ts_gs[i]) for i in range(3)]
-    time_points = np.arange(len(time_series['GLC']))  # Dynamic time points
+        # Create figure with two columns
+        fig = plt.figure(figsize=(12, 8))
+        gs = fig.add_gridspec(1, 2, width_ratios=[1, 2], wspace=0.3)
 
-    for ax, (var_name, data) in zip(ts_axes, time_series.items()):
-        # Calculate statistics
-        mean = np.mean(data, axis=0).flatten()
-        std = np.std(data, axis=0).flatten()
-        q05, q95 = np.percentile(data, [5, 95], axis=0)
+        # --- Time Series Plot ---
+        ts_gs = gs[0].subgridspec(3, 1)
+        ts_axes = [fig.add_subplot(ts_gs[i]) for i in range(3)]
+
+        for ax, (var_name, data) in zip(ts_axes, time_series.items()):
+            # Validate dimensions
+            if data.shape[1] != n_time_points:
+                raise ValueError(f"Time dimension mismatch in {var_name}: "
+                               f"expected {n_time_points}, got {data.shape[1]}")
+
+            # Calculate statistics
+            mean = np.mean(data, axis=0)
+            std = np.std(data, axis=0)
+            q05, q95 = np.percentile(data, [5, 95], axis=0)
+
+            # Plotting
+            ax.plot(time_points, mean, 'o-', color='blue', label='Mean', markersize=3)
+            ax.fill_between(time_points, mean - std, mean + std,
+                          alpha=0.3, color='blue', label='±1 SD')
+            ax.fill_between(time_points, q05, q95,
+                          alpha=0.15, color='blue', label='90% CI')
+            
+            # Formatting
+            ax.set_title(f'{var_name} over Time', fontsize=10)
+            ax.set_xlabel('Time Step', fontsize=8)
+            ax.set_ylabel('Value', fontsize=8)
+            ax.legend(fontsize=7)
+            ax.grid(True, alpha=0.3)
+
+        # --- Parameter Distributions ---
+        max_cols = 2
+        n_cols = min(max_cols, n_params)
+        n_rows = int(np.ceil(n_params / n_cols))
+        param_gs = gs[1].subgridspec(n_rows, n_cols)
         
-        # Plotting
-        ax.plot(time_points, mean, 'o-', color='blue', label='Mean')
-        ax.fill_between(time_points, mean - std, mean + std,
-                       alpha=0.3, color='blue', label='±1 SD')
-        ax.fill_between(time_points, q05, q95,
-                       alpha=0.15, color='blue', label='90% CI')
-        
-        # Formatting
-        ax.set_title(f'{var_name} over Time', fontsize=10)
-        ax.set_xlabel('Time Step', fontsize=8)
-        ax.set_ylabel('Value', fontsize=8)
-        ax.legend(fontsize=7)
-        ax.grid(True, alpha=0.3)
+        for i, key in enumerate(param_keys):
+            row = i // n_cols
+            col = i % n_cols
+            ax = fig.add_subplot(param_gs[row, col])
+            data = keras.ops.convert_to_numpy(sampling[key]).flatten()
+            
+            sns.histplot(data, ax=ax, kde=True, bins=15,
+                        color='green', alpha=0.7,
+                        edgecolor='darkgreen', linewidth=0.5)
+            sns.rugplot(data, ax=ax, color='darkgreen', height=0.05)
+            ax.axvline(np.mean(data), color='red', linestyle='--', linewidth=1)
+            
+            ax.set_title(f'{key}', fontsize=9)
+            ax.set_xlabel('Parameter Value', fontsize=7)
+            ax.grid(True, alpha=0.2)
 
-    # --- Parameter Distributions ---
-    # Dynamically calculate grid size
-    max_cols = 3  # Maximum columns we want
-    n_cols = min(max_cols, n_params)
-    n_rows = int(np.ceil(n_params / n_cols))
-    
-    param_gs = gs[1].subgridspec(n_rows, n_cols)
-    param_axes = []
-    
-    for i, key in enumerate(param_keys):
-        row = i // n_cols
-        col = i % n_cols
-        ax = fig.add_subplot(param_gs[row, col])
-        data = keras.ops.convert_to_numpy(sampling[key]).flatten()
-        
-        # Enhanced histogram with KDE and rug plot
-        sns.histplot(data, ax=ax, kde=True, bins=15, 
-                    color='green', alpha=0.7,
-                    edgecolor='darkgreen', linewidth=0.5)
-        sns.rugplot(data, ax=ax, color='darkgreen', height=0.05)
-        
-        # Add vertical line at mean
-        mean_val = np.mean(data)
-        ax.axvline(mean_val, color='red', linestyle='--', linewidth=1)
-        
-        # Formatting
-        ax.set_title(f'{key} Distribution', fontsize=9)
-        ax.set_xlabel('Parameter Value', fontsize=7)
-        ax.set_ylabel('Density', fontsize=7)
-        ax.grid(True, alpha=0.2)
-        param_axes.append(ax)
+        plt.suptitle(f'Sampling Results (n={size})', y=1.02, fontsize=12)
+        plt.savefig(save_path, bbox_inches='tight', dpi=300)
+        plt.close()
+        print(f"✅ Plot saved to {save_path}")
 
-    # Final adjustments
-    plt.suptitle(f'Sampling Results (n={size})', y=1.02, fontsize=12)
-    # plt.tight_layout()
-    
-    # Save figure
-    if size:
-        save_path = save_path.replace('.png', f'_{size}.png')
-    plt.savefig(save_path, bbox_inches='tight', dpi=300)
-    plt.close()
-    print(f"Plot saved to {save_path}")
-
-
+    except Exception as e:
+        print(f"❌ Plotting failed: {str(e)}")
+        # Debug information
+        print("\nDebug Info:")
+        print(f"Time series shapes: { {k: v.shape for k, v in time_series.items()} }")
+        if 'param_keys' in locals():
+            print(f"Parameter keys: {param_keys}")
+        raise  # Re-raise after showing debug info
 
 from typing import Dict, Any
 

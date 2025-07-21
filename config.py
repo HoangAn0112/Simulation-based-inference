@@ -13,6 +13,7 @@ DATA_FILE = "./data/"
 MODEL_FILE = "model/CoupleFlow_{size}.keras"
 SAMPLE_FILE = "data/sampled_dataset_{size}.pth"
 VALIDATION_FILE = "data/sampled_dataset_valid_100.pth"
+SIMULATION_SIZES = [50000]  
 
 # Simulation parameters
 PARAMETERS_NAME = list(ode_parameter_log_ranges_dict.keys()) 
