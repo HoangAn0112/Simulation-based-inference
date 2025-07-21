@@ -1,6 +1,6 @@
 import os
 if "KERAS_BACKEND" not in os.environ:
-    os.environ["KERAS_BACKEND"] = "tensorflow" #tensorflow is faster than torch
+    os.environ["KERAS_BACKEND"] = "torch" #tensorflow is faster than torch
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -15,7 +15,7 @@ from solver import prior, solver_log, solver
 
 ##########
 # TO - Dos: 
-# - calculate ssr_error
+# - checking others 3 variables => not meaningful
 # - test save and reload torch_model
 # - more modular: create a main script
 # - testing handmade statistics + point estimation 
@@ -95,9 +95,11 @@ workflow = bf.BasicWorkflow(
 )
 
 
-size = 50000
+size = 1000
 number_of_results = 5
 sample_file_name = f"data/sampled_dataset_{size}.pth"
+plot_params = False
+
 try:
     print("load pre data")
     training_data = load_sampled_data(sample_file_name)
@@ -113,8 +115,8 @@ print(f'training - {keras.tree.map_structure(keras.ops.shape, training_data)}')
 
 history = workflow.fit_offline(
     training_data,
-    epochs=400, 
-    batch_size=32, 
+    epochs=100, 
+    batch_size=64, 
     validation_data=validation_data,
 )
 f = bf.diagnostics.plots.loss(history)
@@ -141,16 +143,18 @@ for i in range(number_of_results):
     result = {k: v[0][i][0] for k,v in samples.items()}
     result_object = solver(**result)
     all_results.append(result_object)
+    print(result_object)
     print(result)
 
-    plt.scatter(millard_parameters.values(), result.values())
-    plt.xlabel('millard')
-    plt.ylabel('sbi')
-    plt.title('compare parameters')
-    min_val = min(min(millard_parameters.values()), min(result.values()))
-    max_val = max(max(millard_parameters.values()), max(result.values()))
-    plt.axline((min_val, min_val), (max_val, max_val), color='red', linestyle='--')
-    plt.show()
+    if plot_params:
+        plt.scatter(millard_parameters.values(), result.values())
+        plt.xlabel('millard')
+        plt.ylabel('sbi')
+        plt.title('compare parameters')
+        min_val = min(min(millard_parameters.values()), min(result.values()))
+        max_val = max(max(millard_parameters.values()), max(result.values()))
+        plt.axline((min_val, min_val), (max_val, max_val), color='red', linestyle='--')
+        plt.show()
 
 
 plot_results_grid(all_results, data_1mM)

@@ -217,7 +217,10 @@ def plot_results_grid(all_sim_data, ode_data):
     plot_configs = [
         ('GLC', 3, 'GLC (mM)', 'b'),
         ('ACE_env', 1, 'ACE_env (mM)', 'g'),
-        ('X', 2, 'X (g_DW/L)', 'r')
+        ('X', 2, 'X (g_DW/L)', 'r'),
+        ('ACCOA',4, 'ACCOA 1mM', 'm'),
+        ('ACP',5,'ACP 1mM','c'),
+        ('ACE_cell',6,'ACE_cell 1mM','y')
     ]
     
     n_simulations = len(all_sim_data)
@@ -225,8 +228,8 @@ def plot_results_grid(all_sim_data, ode_data):
     
     # Create figure with one row per simulation, columns for each variable
     fig, axs = plt.subplots(n_simulations, n_variables, 
-                          figsize=(4*n_variables, 3*n_simulations),
-                          squeeze=False)
+                            figsize=(4*n_variables, 3*n_simulations),
+                            squeeze=False)
     
     # Plot each simulation in its own row
     for row_idx, sim_data_dict in enumerate(all_sim_data):
@@ -237,30 +240,48 @@ def plot_results_grid(all_sim_data, ode_data):
             if sim_values is None or len(sim_values) == 0:
                 print(f"[Warning] No simulation data found for '{key}' in simulation {row_idx}. Skipping plot.")
                 continue
-            
+
+            if data_col >= ode_data.shape[1]:
+                print(f"[Info] Experimental data column {data_col} is out of bounds. Replacing with NaNs.")
+                exp_values = np.full_like(data_t, np.nan, dtype=np.float64)
+            else:
+                exp_values = ode_data[1:, data_col]
+
+            # Check if experimental data is valid (not all NaNs or zeros)
+            exp_data_valid = not (np.all(np.isnan(exp_values)) or np.all(exp_values == 0))
+
+            # Ensure matching length
+            if len(sim_values) != len(exp_values) or not exp_data_valid:
+                if len(sim_values) != len(exp_values):
+                    print(f"[Warning] Length mismatch for '{key}' in simulation {row_idx}. Skipping SSR.")
+                elif not exp_data_valid:
+                    print(f"[Info] No valid experimental data for '{key}' in simulation {row_idx}. Skipping exp plot.")
+                ssr = np.nan
+            else:
+                # Calculate SSR (Sum of Squared Residuals)
+                ssr = np.sum((sim_values - exp_values)**2)
+
             # Plot simulation (line)
             ax.plot(data_t, sim_values, color=color, label=f'{key}_sim')
+
+            # Only plot experimental data if valid
+            if exp_data_valid:
+                ax.plot(data_t, exp_values, 'o', 
+                        color=color, label=f'{key}_data', markersize=4)
             
-            # Plot experimental data (points) - NOW IN ALL ROWS
-            if data_col is not None:
-                ax.plot(data_t, ode_data[1:, data_col], 'o', 
-                       color=color, label=f'{key}_data', markersize=4)
-            
-            # Only show xlabel for bottom row
+            # X-axis label only on bottom row
             if row_idx == n_simulations - 1:
                 ax.set_xlabel('t (h)')
             else:
                 ax.set_xticklabels([])
             
-            # # Show title for all rows (modified to include sim number)
-            # ax.set_title(f'{key} 1mM (Sim {row_idx+1})')
-            
-            # Show ylabel for all
+            # Y-axis label
             ax.set_ylabel(ylabel)
             
-            # Show legend for all
-            ax.legend(fontsize='small')
+            # Title with SSR
+            ax.set_title(f'{key} SSR = {ssr:.2f}')
             
+            ax.legend(fontsize='small')
             ax.grid(True)
     
     plt.tight_layout()

@@ -79,9 +79,9 @@ def solver(**kwargs):
         GLC=np.array([]),
         ACE_env=np.array([]),
         X=np.array([]),
-        ACCOA=nan_arr,
-        ACP=nan_arr,
-        ACE_cell=nan_arr,
+        ACCOA=np.array([]),
+        ACP=np.array([]),
+        ACE_cell=np.array([]),
     )
 
     new_ode_parameter = ode_parameters_dict.copy()
