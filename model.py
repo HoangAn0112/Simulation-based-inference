@@ -1,8 +1,5 @@
 import keras
-from bayesflow import networks
 import bayesflow as bf
-
-import keras
 from bayesflow import networks
 
 @keras.saving.register_keras_serializable(package="CustomModels")

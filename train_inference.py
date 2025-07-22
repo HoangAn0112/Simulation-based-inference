@@ -4,10 +4,29 @@ import keras
 from config import *
 from model import GRUSummaryNetwork
 
-def train_model(workflow, size=1000, epochs=100, batch_size=64):
-    """Train the model and save the approximator"""
-    training_data, validation_data = load_training_data(size)
+def train_model(workflow, cfg: Config,):
+    """
+    Train the model and save the approximator using configuration
     
+    Args:
+        workflow: The BayesFlow workflow to train
+        cfg: Config object containing all paths and settings
+        size: Optional override for training size
+        epochs: Optional override for epoch count
+        batch_size: Optional override for batch size
+    """
+    # Get settings from config if not overridden
+    settings = cfg.settings
+    size = settings["size"]
+    epochs = settings["epoch"]
+    batch_size = settings["batch_size"]
+    
+    # Load data using config
+    training_data, validation_data = cfg.load_training_data(size)
+    if training_data is None or validation_data is None:
+        raise ValueError("Failed to load training data")
+    
+    # Train the model
     history = workflow.fit_offline(
         training_data,
         epochs=epochs,
@@ -15,13 +34,12 @@ def train_model(workflow, size=1000, epochs=100, batch_size=64):
         validation_data=validation_data,
     )
     
-    # Save the approximator (not the whole workflow)
-    model_path = MODEL_FILE.format(size=size)
+    # Save the model using config path
+    model_path = cfg.model_path(size=size)
     os.makedirs(os.path.dirname(model_path), exist_ok=True)
-    
-    # Save using Keras 3.0 format
     workflow.approximator.save(model_path, save_format="keras_v3")
     
+    print(f"Model saved to {model_path}")
     return history
 
 

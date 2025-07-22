@@ -1,7 +1,8 @@
-import bayesflow as bf
-import argparse
-import matplotlib.pyplot as plt
 from config import *
+cfg = Config()
+
+import bayesflow as bf
+import matplotlib.pyplot as plt
 from model import *
 from train_inference import *
 from simulate_data import *
@@ -9,32 +10,15 @@ from solver import prior, solver_log
 from tools import plot_results_grid
 
 
-def parse_arguments():
-    """Parse command line arguments"""
-    parser = argparse.ArgumentParser(description="Bayesian parameter estimation workflow")
-    subparsers = parser.add_subparsers(dest='command', required=True)
+def run_training():
+    cfg = Config()
+    
+    # Load data
+    train_data, valid_data = cfg.load_training_data()
+    if train_data is None:
+        raise RuntimeError("Failed to load training data")
 
-    # Simulation parser
-    sim_parser = subparsers.add_parser('simulate', help='Generate synthetic training data')
-    sim_parser.add_argument('--sizes', nargs='+', type=int, default=[1000], 
-                          help='Dataset sizes to generate (e.g., 100 500 1000)')
-
-    # Training command
-    train_parser = subparsers.add_parser('train', help='Train a new model')
-    train_parser.add_argument('--size', type=int, default=1000, help='Training dataset size')
-    train_parser.add_argument('--epoch', type=int, default=100, help='Training epoch')
-    train_parser.add_argument('--batch_size', type=int, default=64, help='Training batch size')
-
-    # Inference command
-    infer_parser = subparsers.add_parser('infer', help='Run inference with saved model')
-    infer_parser.add_argument('--model-size', type=int, default=1000, help='Size of model to load')
-    infer_parser.add_argument('--num-samples', type=int, default=5, help='Number of posterior samples')
-
-    return parser.parse_args()
-
-
-def run_training(size, epochs, batch_size):
-    """Execute full training pipeline"""
+    # Training setup
     simulator = bf.simulators.make_simulator([prior, solver_log])
     adapter = (
         bf.adapters.Adapter()
@@ -43,9 +27,11 @@ def run_training(size, epochs, batch_size):
         .concatenate(PARAMETERS_NAME, into="inference_variables")
         .concatenate(["GLC", "ACE_env", "X"], into="summary_variables")
     )
-    workflow = create_workflow(simulator, adapter)
-    train_model(workflow, size=size, epochs=epochs, batch_size=batch_size)
-    print(f"Training completed. Model saved to {MODEL_FILE.format(size=size)}")
+    
+    train_model(
+        create_workflow(simulator, adapter),
+        cfg
+    )
 
 
 def run_inference(model_size, num_samples):
@@ -71,14 +57,20 @@ def run_inference(model_size, num_samples):
     return results
 
 def main():
-    args = parse_arguments()
-    if args.command == 'simulate':
-        print(f"Simulating datasets with sizes: {args.sizes}")
-        simulate_data(sizes=args.sizes)
-    if args.command == 'train':
-        run_training(args.size, args.epoch, args.batch_size)
-    elif args.command == 'infer':
-        run_inference(args.model_size, args.num_samples)
+    cfg = Config()
+    settings = cfg.settings
+    if cfg.mode == "simulate":
+        sizes = settings["sizes"]
+        print(f"Simulating datasets with sizes: {sizes}")
+        simulate_data(sizes=sizes)
+
+    if cfg.mode == 'train':
+        print(f"Training with config: {settings}")
+        run_training()
+    
+    elif cfg.mode == 'infer':
+        print(f"Inference with model size: {cfg.settings['model_size']}")
+        run_inference(cfg.settings['model_size'], cfg.settings["num_samples"])
 
 if __name__ == "__main__":
     main()

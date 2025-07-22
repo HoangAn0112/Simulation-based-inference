@@ -1,0 +1,22 @@
+environment:
+  keras_backend: "torch"
+
+paths:
+  data: "./data/"
+  model: "model/CoupleFlow_{size}.keras"
+  sample: "data/sampled_dataset_{size}.pth"
+  validation: "data/sampled_dataset_valid_100.pth"
+
+modes:
+  simulate:
+    sizes: [100, 500]
+  
+  train:
+    size: 500
+    epoch: 50
+    batch_size: 64
+
+  infer:
+    model_size: 50000
+    num_samples: 5
+
