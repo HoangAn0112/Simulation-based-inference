@@ -1,6 +1,6 @@
 This repository contains a Simulation based inference (SBI) framework to fine-tune kinetics-ODE models parameters. Classical inference often relies on an explicit likelihood function, which can be intractable or unavailable for complex mechanistic models. SBI bypasses this limitation by treating the mechanistic model as a simulator: given a set of inputs x, the simulator produces outputs y.  Instead of relying on closed-form likelihoods, SBI leverages these simulated input–output pairs to train a neural density estimator (Coupling Flow), which can approximate the posterior distribution p(y | x). This makes it possible to infer which inputs (e.g., reaction fluxes or constraints) are most consistent with observed experimental data, even when the mechanistic model is nonlinear or high-dimensional.
 
-![](data/BOIS WP6 (7).png)
+![photo](data/BOIS WP6 (7).png)
 
 The framework draws inspiration from:
 - Cranmera et al (2020): methodlogy
