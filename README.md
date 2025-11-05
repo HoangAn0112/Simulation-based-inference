@@ -1,10 +1,10 @@
 <h1>Simulation-Based Inference (SBI) Framework for Kinetics–ODE Model Calibration</h1>
 
+<img src="data/BOIS.png" width="400" align="right" style="margin-left: 40px; margin-bottom: 10px;"/>
+
 This repository provides a **Simulation-Based Inference (SBI)** framework designed to fine-tune 
 parameters in kinetics–ODE models. Traditional inference methods rely on explicit likelihood functions, 
 which can become intractable or unavailable for complex mechanistic systems.
-
-<img src="data/BOIS WP6 (7).png" width="600" align="right" style="margin-left: 40px; margin-bottom: 10px;"/>
 
 
 SBI overcomes this limitation by treating the mechanistic model as a *simulator*: given a set of inputs `x`, 
@@ -30,8 +30,9 @@ The framework builds upon prior work and inspiration from:
 
 To address this, we applied **Neural Posterior Estimation (NPE)** within our SBI framework. We initialized the inference by **uniformly sampling each parameter** within its respective log-scale range, as reported by Millard et al.  During training, simulated extracellular **glucose** and **acetate** concentrations—along with concentration trajectories (including biomass)—were used as inputs to a **Coupling Flow** network to learn their joint distribution. Once trained, the network was fitted using experimental biomass data to **approximate the model parameters**. The inferred parameters were then validated by fitting them back into the original ODE model to generate a simulated biomass curve for **comparison with experimental results**.
 
-<img src="data/50000_batch64_epoch400_sample5000.png" alt="Result" width="1000"/>
 
 This work evaluated how NPE can capture complex metabolic dynamics with its parameters. The next phase involves testing the model on broader datasets within a whole-cell modeling framework for E. coli.
+
+<img src="data/50000_batch64_epoch400_sample5000.png" alt="Result" width="1000"/>
 
 
