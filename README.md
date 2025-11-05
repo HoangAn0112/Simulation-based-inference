@@ -1,11 +1,10 @@
 <h1>Simulation-Based Inference (SBI) Framework for Kinetics–ODE Model Calibration</h1>
 
-<img src="data/BOIS.png" width="400" align="right" style="margin-left: 40px; margin-bottom: 10px;"/>
-
 This repository provides a **Simulation-Based Inference (SBI)** framework designed to fine-tune 
 parameters in kinetics–ODE models. Traditional inference methods rely on explicit likelihood functions, 
 which can become intractable or unavailable for complex mechanistic systems.
 
+<img src="data/BOIS.png" width="400" align="right" style="margin-left: 40px; margin-bottom: 10px;"/>
 
 SBI overcomes this limitation by treating the mechanistic model as a *simulator*: given a set of inputs `x`, 
 it produces outputs `y`. Instead of requiring closed-form likelihoods, SBI uses these simulated 
